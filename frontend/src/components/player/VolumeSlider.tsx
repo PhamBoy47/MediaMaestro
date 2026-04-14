@@ -24,7 +24,6 @@ export const VolumeSlider: React.FC = () => {
     >
       <button
         onClick={() => setVolume(volume === 0 ? 100 : 0)}
-        className="w-9 h-9 rounded
         className="w-9 h-9 rounded-lg flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition"
       >
         <span className="text-sm">{icon}</span>
@@ -42,7 +41,7 @@ export const VolumeSlider: React.FC = () => {
           min={0}
           max={100}
           value={volume}
-          onChange={(e) => setVolume(Number(e.target.value))}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVolume(Number(e.target.value))}
           className="w-full h-1 appearance-none bg-white/20 rounded-full outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md"
         />
       </div>

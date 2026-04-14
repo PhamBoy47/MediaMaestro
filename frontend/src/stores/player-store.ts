@@ -54,7 +54,6 @@ interface PlayerState {
   audioTracks: AudioTrack[];
   activeSubtitleTrack: number | null;
   activeAudioTrack: number | null;
-  currentShader: string | null;
   isBuffering: boolean;
   
   // Music state
@@ -75,8 +74,6 @@ interface PlayerState {
   stop: () => Promise<void>;
   setSubtitleTrack: (id: number) => Promise<void>;
   setAudioTrack: (id: number) => Promise<void>;
-  loadShader: (path: string) => Promise<void>;
-  clearShaders: () => Promise<void>;
   addSubtitle: (path: string) => Promise<void>;
   setPlaybackSpeed: (speed: number) => Promise<void>;
   toggleFullscreen: () => Promise<void>;
@@ -136,28 +133,6 @@ function initMpvListeners() {
 
   EventsOn('mpv:buffer', (data: any) => {
     // Buffer state for torrent streaming
-  });
-
-  // Music events
-  EventsOn('music:playing', (data: any) => {
-    usePlayerStore.setState({ 
-      mode: 'music', 
-      isPlaying: true, 
-      isPaused: false,
-      videoSource: null,
-    });
-  });
-
-  EventsOn('music:ended', () => {
-    usePlayerStore.getState().nextTrack();
-  });
-
-  EventsOn('music:pause', (data: boolean) => {
-    usePlayerStore.setState({ isPaused: data, isPlaying: !data });
-  });
-
-  EventsOn('music:volume', (data: number) => {
-    usePlayerStore.setState({ volume: data });
   });
 
   // Torrent events
@@ -220,7 +195,6 @@ export const usePlayerStore = create<PlayerState>()((set, get) => {
     audioTracks: [],
     activeSubtitleTrack: null,
     activeAudioTrack: null,
-    currentShader: null,
     isBuffering: false,
     currentTrack: null,
     queue: [],
@@ -281,15 +255,6 @@ export const usePlayerStore = create<PlayerState>()((set, get) => {
       set({ activeAudioTrack: id });
     },
 
-    loadShader: async (path) => {
-      await App.MpvLoadShader(path);
-      set({ currentShader: path });
-    },
-
-    clearShaders: async () => {
-      await App.MpvClearShaders();
-      set({ currentShader: null });
-    },
 
     addSubtitle: async (path) => {
       await App.MpvAddSubtitle(path);

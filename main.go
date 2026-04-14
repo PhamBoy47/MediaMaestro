@@ -33,16 +33,17 @@ func main() {
             app,
         },
         Mac: &mac.Options{
-            TitleBar: mac.TitleBar{
+            TitleBar: &mac.TitleBar{
                 HideTitleBar: true,
             },
             WebviewIsTransparent: false,
             WindowIsTranslucent:  false,
         },
         Windows: &windows.Options{
-            WebviewIsTransparent: false,
-            WindowIsTranslucent:  false,
-            DisableWindowIcon:   false,
+            WebviewIsTransparent: true,
+            WindowIsTranslucent:  true,
+            DisableWindowIcon:    false,
+            // BackdropType: windows.Mica, // Optional: for Windows 11 Mica effect
         },
         Debug: options.Debug{
             OpenInspectorOnStartup: false,

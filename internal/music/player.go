@@ -9,9 +9,6 @@ import (
     "path/filepath"
     "strings"
     "sync"
-    "time"
-
-    "github.com/h2non/filetype"
 )
 
 type Player struct {

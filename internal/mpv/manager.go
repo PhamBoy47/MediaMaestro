@@ -1,14 +1,11 @@
 package mpv
 
 import (
-    "encoding/json"
     "fmt"
     "os"
     "os/exec"
     "path/filepath"
     "runtime"
-    "strconv"
-    "strings"
     "sync"
     "time"
 )
@@ -35,10 +32,14 @@ type Manager struct {
 
 // NewManager creates a new MPV manager
 func NewManager(configDir string) *Manager {
-    socketPath := filepath.Join(configDir, "mpv.sock")
-
-    // Clean up stale socket
-    os.Remove(socketPath)
+    var socketPath string
+    if runtime.GOOS == "windows" {
+        socketPath = `\\.\pipe\media-maestro-mpv`
+    } else {
+        socketPath = filepath.Join(configDir, "mpv.sock")
+        // Clean up stale socket
+        os.Remove(socketPath)
+    }
 
     return &Manager{
         configDir:  configDir,
@@ -78,7 +79,7 @@ func (m *Manager) Launch(windowHandle uintptr) error {
         // Otherwise, MPV opens its own window
         "--vo=gpu",
         "--gpu-api=opengl",
-        "--hwdec=auto-safe",
+        "--hwdec=auto",
 
         // ── Cache / Streaming (critical for torrent playback) ──
         "--cache=yes",
@@ -133,12 +134,6 @@ func (m *Manager) Launch(windowHandle uintptr) error {
     // If we have a window handle (from Wails), embed MPV
     if windowHandle != 0 {
         args = append(args, fmt.Sprintf("--wid=%d", windowHandle))
-    }
-
-    // ── Shader path ──
-    shaderDir := filepath.Join(m.configDir, "shaders")
-    if _, err := os.Stat(shaderDir); err == nil {
-        args = append(args, fmt.Sprintf("--glsl-shaders-dir=%s", shaderDir))
     }
 
     m.process = exec.Command(m.mpvPath, args...)
@@ -301,11 +296,17 @@ func (m *Manager) TogglePause() error {
 }
 
 func (m *Manager) SeekAbsolute(seconds float64) error {
+    if m.ipcClient == nil || !m.ipcClient.IsConnected() {
+        return fmt.Errorf("MPV not connected")
+    }
     _, err := m.ipcClient.SendCommand("seek", seconds, "absolute")
     return err
 }
 
 func (m *Manager) SeekRelative(seconds float64) error {
+    if m.ipcClient == nil || !m.ipcClient.IsConnected() {
+        return fmt.Errorf("MPV not connected")
+    }
     _, err := m.ipcClient.SendCommand("seek", seconds, "relative")
     return err
 }
@@ -318,9 +319,11 @@ func (m *Manager) SetVolume(vol float64) error {
 }
 
 func (m *Manager) Stop() error {
-    _, err := m.ipcClient.SendCommand("stop")
-    if err != nil {
-        return err
+    if m.ipcClient != nil && m.ipcClient.IsConnected() {
+        _, err := m.ipcClient.SendCommand("stop")
+        if err != nil {
+            return err
+        }
     }
     m.mu.Lock()
     m.playing = false
@@ -342,23 +345,21 @@ func (m *Manager) Shutdown() {
 }
 
 func (m *Manager) ToggleFullscreen() error {
+    if m.ipcClient == nil || !m.ipcClient.IsConnected() {
+        return fmt.Errorf("MPV not connected")
+    }
     _, err := m.ipcClient.SendCommand("cycle", "fullscreen")
     return err
 }
 
 func (m *Manager) AddSubtitle(path string) error {
+    if m.ipcClient == nil || !m.ipcClient.IsConnected() {
+        return fmt.Errorf("MPV not connected")
+    }
     _, err := m.ipcClient.SendCommand("sub-add", path)
     return err
 }
 
-func (m *Manager) LoadShader(shaderPath string) error {
-    return m.SetProperty("glsl-shader", shaderPath)
-}
-
-func (m *Manager) ClearShaders() error {
-    _, err := m.ipcClient.SendCommand("vf", "clr", "")
-    return err
-}
 
 func (m *Manager) Screenshot(filePath string) error {
     return m.SetProperty("screenshot-template", filePath)
@@ -391,35 +392,43 @@ func (m *Manager) GetFloatProperty(name string) (float64, error) {
     return m.ipcClient.GetFloatProperty(name)
 }
 
-// findMPVBinary locates the MPV executable
+// findMPVBinary locates the MPV executable on the system
 func findMPVBinary() (string, error) {
-    candidates := []string{}
-    switch runtime.GOOS {
-    case "windows":
-        candidates = []string{
-            `C:\Program Files\mpv\mpv.exe`,
-            `C:\Program Files (x86)\mpv\mpv.exe`,
-        }
-    case "darwin":
-        candidates = []string{
-            "/opt/homebrew/bin/mpv",
-            "/usr/local/bin/mpv",
-            "/Applications/mpv.app/Contents/MacOS/mpv",
-        }
-    case "linux":
-        candidates = []string{
-            "/usr/bin/mpv",
-            "/usr/local/bin/mpv",
-        }
-    }
-    for _, p := range candidates {
-        if _, err := os.Stat(p); err == nil {
-            return p, nil
-        }
-    }
-    path, err := exec.LookPath("mpv")
-    if err != nil {
-        return "", fmt.Errorf("MPV not found. Install from mpv.io")
-    }
-    return path, nil
+	// Check common locations first
+	candidates := []string{}
+
+	switch runtime.GOOS {
+	case "windows":
+		candidates = []string{
+			`C:\Program Files\mpv\mpv.exe`,
+			`C:\Program Files (x86)\mpv\mpv.exe`,
+			filepath.Join(os.Getenv("LOCALAPPDATA"), `Microsoft\WinGet\Links\mpv.exe`),
+		}
+	case "darwin":
+		candidates = []string{
+			"/opt/homebrew/bin/mpv",
+			"/usr/local/bin/mpv",
+			"/Applications/mpv.app/Contents/MacOS/mpv",
+		}
+	case "linux":
+		candidates = []string{
+			"/usr/bin/mpv",
+			"/usr/local/bin/mpv",
+			"/snap/bin/mpv",
+			"/bin/mpv",
+		}
+	}
+
+	for _, path := range candidates {
+		if _, err := os.Stat(path); err == nil {
+			return path, nil
+		}
+	}
+
+	// Fallback: check PATH
+	path, err := exec.LookPath("mpv")
+	if err != nil {
+		return "", fmt.Errorf("MPV not found. Install MPV and add it to your PATH")
+	}
+	return path, nil
 }

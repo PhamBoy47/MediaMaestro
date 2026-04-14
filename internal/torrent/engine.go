@@ -1,10 +1,9 @@
 package torrent
 
 import (
-    "context"
     "fmt"
-    "net/http"
     "path/filepath"
+    "strings"
     "sync"
     "time"
 
@@ -113,7 +112,7 @@ func (e *Engine) AddMagnet(magnetURI string) (*TorrentInfo, error) {
     }
 
     for i, f := range info.Files {
-        path := f.Path
+        path := f.DisplayPath(info)
         ext := strings.ToLower(filepath.Ext(path))
         files[i] = FileInfo{
             Path:    path,
@@ -235,7 +234,7 @@ func (e *Engine) GetStatus(infoHash string) (*TorrentStatus, error) {
         InfoHash:    infoHash,
         BytesWritten: stats.BytesWritten.Int64(),
         BytesRead:   stats.BytesRead.Int64(),
-        Peers:       stats.ConnectedPeers,
+        Peers:       stats.ActivePeers,
         Speed:       float64(stats.BytesRead.Int64()), // Simplified; real impl uses rate calc
         Progress:    progress,
         State:       "downloading",
@@ -280,6 +279,3 @@ func (e *Engine) List() []*TorrentInfo {
 func (e *Engine) Close() {
     e.client.Close()
 }
-
-// Need to import strings
-import "strings"

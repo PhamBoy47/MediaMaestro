@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-surface-0: #020202;
+  --bg-surface-1: #080808;
+  --bg-surface-2: #121212;
+  --bg-surface-3: #1a1a1a;
+  --bg-surface-4: #222222;
+  --text-primary: #ffffff;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  width: 100vw;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg-surface-0);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+/* Class to enable transparency for video parenting */
+.layers-transparent, .layers-transparent body, .layers-transparent #root {
+  background: transparent !important;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Seanime-inspired Halo Background ── */
+body::before {
+  content: "";
+  position: absolute;
+  top: -20%;
+  left: -10%;
+  width: 60%;
+  height: 60%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.08) 0%, transparent 70%);
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Surface Utilities ── */
+.bg-surface-0 { background-color: var(--bg-surface-0); }
+.bg-surface-1 { background-color: var(--bg-surface-1); }
+.bg-surface-2 { background-color: var(--bg-surface-2); }
+.bg-surface-3 { background-color: var(--bg-surface-3); }
+.bg-surface-4 { background-color: var(--bg-surface-4); }
+
+.bg-accent { background-color: var(--accent); }
+.text-accent { color: var(--accent); }
+.border-accent { border-color: var(--accent); }
+
+/* ── UI Utilities ── */
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Glassmorphism ── */
+.glass {
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { 
+  background: rgba(255, 255, 255, 0.1); 
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+
+/* ── Selection ── */
+::selection { background: var(--accent); color: white; }

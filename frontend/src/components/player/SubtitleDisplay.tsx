@@ -9,14 +9,9 @@ export const SubtitleDisplay: React.FC = () => {
 
   useEffect(() => {
     // Listen for subtitle text events from Go backend
-    // The Go MPV client observes the "sub-text" property
-    const unlisten = EventsOn('mpv:sub-text', (data: string) => {
+    return EventsOn('mpv:sub-text', (data: string) => {
       setSubtitleText(data || '');
     });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
   }, []);
 
   if (!subtitleText || activeSubtitleTrack === null || activeSubtitleTrack <= 0) return null;

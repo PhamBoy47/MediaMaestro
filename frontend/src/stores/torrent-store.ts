@@ -1,22 +1,15 @@
 import { create } from 'zustand';
 import * as App from '../../wailsjs/go/main/App';
-
-interface TorrentInfo {
-  infoHash: string;
-  name: string;
-  totalSize: number;
-  files: { path: string; length: number; index: number; isVideo: boolean }[];
-  streamUrl: string;
-  state: string;
-}
+import { torrent } from '../../wailsjs/go/models'; // Corrected import path for models
+import { usePlayerStore } from './player-store';
 
 interface TorrentState {
   activeHash: string | null;
-  torrents: TorrentInfo[];
+  torrents: torrent.TorrentInfo[]; // Corrected namespace usage
   isAdding: boolean;
 
-  addMagnet: (magnet: string) => Promise<TorrentInfo | null>;
-  addFile: (path: string) => Promise<TorrentInfo | null>;
+  addMagnet: (magnet: string) => Promise<torrent.TorrentInfo | null>;
+  addFile: (path: string) => Promise<torrent.TorrentInfo | null>;
   remove: (hash: string) => Promise<void>;
   refreshList: () => Promise<void>;
   playTorrentFile: (hash: string, fileIndex: number) => Promise<void>;
@@ -79,15 +72,13 @@ export const useTorrentStore = create<TorrentState>()((set, get) => ({
   },
 
   playTorrentFile: async (hash, fileIndex) => {
-    const url = App.TorrentGetStreamURL(hash, fileIndex);
+    // Await the stream URL to fix Promise vs string mismatch
+    const url = await App.TorrentGetStreamURL(hash, fileIndex);
     const info = get().torrents.find((t) => t.infoHash === hash);
-    const file = info?.files[fileIndex];
+    const fileName = info?.name || 'Torrent Stream';
     
     set({ activeHash: hash });
     
-    await usePlayerStore.getState().playStream(
-      url, 
-      file?.path || info?.name || 'Torrent Stream'
-    );
+    await usePlayerStore.getState().playStream(url, fileName);
   },
 }));

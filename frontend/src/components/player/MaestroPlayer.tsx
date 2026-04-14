@@ -1,149 +1,125 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { usePlayerStore } from '@/stores/player-store';
-import { PlayerTopBar } from './PlayerTopBar';
-import { PlayerControls } from './PlayerControls';
-import { SeekBar } from './SeekBar';
+import { PlayerOverlay } from './PlayerOverlay';
 import { SubtitleDisplay } from './SubtitleDisplay';
 import { TorrentProgress } from './TorrentProgress';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard';
 import { cn } from '@/lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Loader2 } from 'lucide-react';
 
-export const SeanimePlayer: React.FC = () => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  
-  const [showControls, setShowControls] = useState(true);
+import { MusicNowPlaying } from './MusicNowPlaying';
+import { TrackSidebar } from './TrackSidebar';
+
+export const PremiumPlayer: React.FC = () => {
   const [cursorVisible, setCursorVisible] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isTrackSidebarOpen, setIsTrackSidebarOpen] = useState(false);
   
   const mode = usePlayerStore((s) => s.mode);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const isPaused = usePlayerStore((s) => s.isPaused);
   const isBuffering = usePlayerStore((s) => s.isBuffering);
-  const videoSource = usePlayerStore((s) => s.videoSource);
-  const videoTitle = usePlayerStore((s) => s.videoTitle);
-
-  // ── Auto-hide controls (Seanime behavior: 3 seconds) ──
-  const resetHideTimer = useCallback(() => {
-    setShowControls(true);
-    setCursorVisible(true);
-    
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    
-    if (isPlaying && !isPaused) {
-      hideTimerRef.current = setTimeout(() => {
-        setShowControls(false);
-        setCursorVisible(false);
-      }, 3000);
-    }
-  }, [isPlaying, isPaused]);
-
-  // ── Mouse movement ──
-  const handleMouseMove = useCallback(() => {
-    resetHideTimer();
-  }, [resetHideTimer]);
-
-  // ── Click to toggle pause ──
-  const handleVideoClick = useCallback((e: React.MouseEvent) => {
-    // Don't toggle if clicking on controls
-    if ((e.target as HTMLElement).closest('[data-controls]')) return;
-    usePlayerStore.getState().togglePause();
-  }, []);
-
-  // ── Double-click to toggle fullscreen ──
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('[data-controls]')) return;
-    usePlayerStore.getState().toggleFullscreen();
-    setIsFullscreen((prev) => !prev);
-  }, []);
+  const togglePause = usePlayerStore((s) => s.togglePause);
+  const toggleFullscreen = usePlayerStore((s) => s.toggleFullscreen);
 
   // ── Keyboard shortcuts ──
   useKeyboardShortcuts();
 
-  // ── Initial show on mount ──
-  useEffect(() => {
-    resetHideTimer();
-    return () => {
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    };
-  }, []);
+  const handleVideoClick = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button, input, [role="button"]')) return;
+    togglePause();
+  }, [togglePause]);
 
-  if (mode !== 'video' && mode !== 'idle') return null;
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button, input, [role="button"]')) return;
+    toggleFullscreen();
+  }, [toggleFullscreen]);
+
+  const toggleTrackSidebar = () => setIsTrackSidebarOpen(prev => !prev);
+
+  if (mode === 'idle') return null;
 
   return (
     <div
-      ref={containerRef}
       className={cn(
-        "relative w-full h-full bg-black select-none",
+        "relative w-full h-full select-none overflow-hidden bg-transparent",
         !cursorVisible && "cursor-none"
       )}
-      onMouseMove={handleMouseMove}
       onClick={handleVideoClick}
       onDoubleClick={handleDoubleClick}
     >
-      {/* ── Video Render Area ── */}
-      {/* 
-        MPV renders directly to the native window via --wid.
-        The React webview floats on top with transparent background.
-        The video is visible through the transparent areas.
-        
-        If using the external MPV window approach (Seanime default),
-        this area shows a black screen with a "Playing in MPV..." indicator.
-      */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        {!isPlaying && (
-          <div className="text-center">
-            <div className="w-20 h-20 rounded-full border-2 border-white/20 flex items-center justify-center mb-4 mx-auto">
-              <svg className="w-8 h-8 text-white/40 ml-1" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
+      {/* ── Content Layer ── */}
+      <AnimatePresence mode="wait">
+        {mode === 'music' ? (
+          <motion.div
+            key="music"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0"
+          >
+            <MusicNowPlaying />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="video"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0"
+          >
+            {/* MPV Background Layer */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              {!isPlaying && (
+                <div className="text-center">
+                  <div className="w-24 h-24 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center mb-6 mx-auto backdrop-blur-xl shadow-2xl">
+                    <div className="w-12 h-12 bg-accent rounded-full flex items-center justify-center animate-pulse">
+                      <div className="w-0 h-0 border-t-[8px] border-t-transparent border-l-[14px] border-l-white border-b-[8px] border-b-transparent ml-1" />
+                    </div>
+                  </div>
+                  <p className="text-white/60 text-lg font-medium">Ready to Play</p>
+                  <p className="text-white/40 text-sm mt-1">Open a file or drop a link</p>
+                </div>
+              )}
+              
+              {/* Buffering indicator */}
+              <AnimatePresence>
+                {isBuffering && (
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm z-50"
+                  >
+                    <div className="flex flex-col items-center gap-4">
+                      <Loader2 className="w-12 h-12 text-accent animate-spin" />
+                      <span className="text-white/80 font-medium tracking-widest uppercase text-xs">Buffering</span>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-            <p className="text-white/40 text-sm">Open a file or paste a magnet link to start</p>
-          </div>
+
+            {/* Subtitle Overlay */}
+            <div className="relative z-10 pointer-events-none">
+              <SubtitleDisplay />
+            </div>
+            
+            {/* Torrent Stream Progress */}
+            <div className="absolute top-20 right-6 z-30 pointer-events-none">
+              <TorrentProgress />
+            </div>
+          </motion.div>
         )}
-        
-        {/* Buffering indicator */}
-        {isBuffering && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-            <div className="w-12 h-12 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-          </div>
-        )}
-      </div>
+      </AnimatePresence>
 
-      {/* ── Subtitle Overlay ── */}
-      <SubtitleDisplay />
+      {/* ── Premium Control Overlay (Shared) ── */}
+      <PlayerOverlay onOpenTracks={toggleTrackSidebar} />
 
-      {/* ── Controls Overlay (Seanime-style gradient system) ── */}
-      <div
-        data-controls
-        className={cn(
-          "absolute inset-0 flex flex-col justify-between",
-          "transition-opacity duration-300 ease-out",
-          showControls ? "opacity-100" : "opacity-0 pointer-events-none"
-        )}
-      >
-        {/* Top gradient bar */}
-        <PlayerTopBar visible={showControls} />
-
-        {/* Center: nothing (video visible) */}
-
-        {/* Bottom gradient + controls */}
-        <div className="relative">
-          {/* Bottom gradient */}
-          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none" />
-          
-          <div className="relative px-6 pb-6 space-y-3">
-            {/* Seek bar */}
-            <SeekBar />
-
-            {/* Control buttons row */}
-            <PlayerControls />
-          </div>
-        </div>
-      </div>
-
-      {/* ── Torrent Stream Progress (when streaming) ── */}
-      <TorrentProgress />
+      {/* ── Sidebars ── */}
+      <TrackSidebar 
+        isOpen={isTrackSidebarOpen} 
+        onClose={() => setIsTrackSidebarOpen(false)} 
+      />
     </div>
   );
-};
+};

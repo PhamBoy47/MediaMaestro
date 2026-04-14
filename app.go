@@ -2,16 +2,15 @@ package main
 
 import (
     "context"
-    "fmt"
     "log"
     "os"
-    "os/exec"
     "path/filepath"
     "runtime"
 
     "github.com/PhamBoy47/media-maestro/internal/database"
     "github.com/PhamBoy47/media-maestro/internal/mpv"
     "github.com/PhamBoy47/media-maestro/internal/music"
+    "github.com/PhamBoy47/media-maestro/internal/library"
     "github.com/PhamBoy47/media-maestro/internal/subtitles"
     "github.com/PhamBoy47/media-maestro/internal/torrent"
     wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -23,7 +22,6 @@ type App struct {
     mpvMgr    *mpv.Manager
     torrent   *torrent.Engine
     subs      *subtitles.Client
-    musicP    *music.Player
     configDir string
 }
 
@@ -44,7 +42,6 @@ func (a *App) startup(ctx context.Context) {
 
     // Ensure config directory exists
     os.MkdirAll(a.configDir, 0755)
-    os.MkdirAll(filepath.Join(a.configDir, "shaders"), 0755)
     os.MkdirAll(filepath.Join(a.configDir, "torrents"), 0755)
     os.MkdirAll(filepath.Join(a.configDir, "subtitles"), 0755)
     os.MkdirAll(filepath.Join(a.configDir, "covers"), 0755)
@@ -84,11 +81,6 @@ func (a *App) startup(ctx context.Context) {
         filepath.Join(a.configDir, "subtitles"),
     )
 
-    // Initialize music player
-    a.musicP = music.NewPlayer(func(eventType string, data interface{}) {
-        wailsRuntime.EventsEmit(a.ctx, "music:"+eventType, data)
-    })
-
     log.Println("Media Maestro initialized successfully")
 }
 
@@ -98,9 +90,6 @@ func (a *App) shutdown(ctx context.Context) {
     }
     if a.torrent != nil {
         a.torrent.Close()
-    }
-    if a.musicP != nil {
-        a.musicP.Stop()
     }
     if a.db != nil {
         a.db.Close()
@@ -168,13 +157,6 @@ func (a *App) MpvSetAudioTrack(id int) error {
     return a.mpvMgr.SetProperty("aid", id)
 }
 
-func (a *App) MpvLoadShader(shaderPath string) error {
-    return a.mpvMgr.LoadShader(shaderPath)
-}
-
-func (a *App) MpvClearShaders() error {
-    return a.mpvMgr.ClearShaders()
-}
 
 func (a *App) MpvGetTrackList() (interface{}, error) {
     return a.mpvMgr.GetProperty("track-list")
@@ -202,6 +184,26 @@ func (a *App) MpvAddSubtitle(path string) error {
 
 func (a *App) MpvToggleFullscreen() error {
     return a.mpvMgr.ToggleFullscreen()
+}
+
+// ── LIBRARY COMMANDS ──
+
+func (a *App) GetLibraryItems(mediaType string, search string) ([]database.MediaItem, error) {
+	return a.db.GetMediaItems(mediaType, search)
+}
+
+func (a *App) ScanFolder() ([]database.MediaItem, error) {
+	path, err := a.OpenFolderPicker()
+	if err != nil || path == "" {
+		return nil, err
+	}
+	
+	scanner := library.NewScanner(a.db)
+	return scanner.ScanDirectory(path)
+}
+
+func (a *App) GetLibraryStats() (database.GlobalStats, error) {
+	return a.db.GetStats()
 }
 
 // ══════════════════════════════════════════════════════════
@@ -253,23 +255,23 @@ func (a *App) DownloadSubtitle(fileID string, mediaPath string) (string, error) 
 // ══════════════════════════════════════════════════════════
 
 func (a *App) MusicPlay(path string) error {
-    return a.musicP.Play(path)
+    return a.mpvMgr.PlayFile(path)
 }
 
 func (a *App) MusicTogglePause() error {
-    return a.musicP.TogglePause()
+    return a.mpvMgr.TogglePause()
 }
 
 func (a *App) MusicSetVolume(vol float64) error {
-    return a.musicP.SetVolume(vol)
+    return a.mpvMgr.SetVolume(vol)
 }
 
 func (a *App) MusicStop() error {
-    return a.musicP.Stop()
+    return a.mpvMgr.Stop()
 }
 
 func (a *App) MusicSeek(position float64) error {
-    return a.musicP.Seek(position)
+    return a.mpvMgr.SeekAbsolute(position)
 }
 
 func (a *App) MusicGetTrackInfo(path string) (*music.TrackInfo, error) {
@@ -309,45 +311,4 @@ func (a *App) GetPlatform() string {
 
 func (a *App) GetConfigDir() string {
     return a.configDir
-}
-
-// findMPVBinary locates the MPV executable on the system
-func findMPVBinary() (string, error) {
-    // Check common locations first
-    candidates := []string{}
-
-    switch runtime.GOOS {
-    case "windows":
-        candidates = []string{
-            `C:\Program Files\mpv\mpv.exe`,
-            `C:\Program Files (x86)\mpv\mpv.exe`,
-            filepath.Join(os.Getenv("LOCALAPPDATA"), `Microsoft\WinGet\Links\mpv.exe`),
-        }
-    case "darwin":
-        candidates = []string{
-            "/opt/homebrew/bin/mpv",
-            "/usr/local/bin/mpv",
-            "/Applications/mpv.app/Contents/MacOS/mpv",
-        }
-    case "linux":
-        candidates = []string{
-            "/usr/bin/mpv",
-            "/usr/local/bin/mpv",
-            "/snap/bin/mpv",
-            "/bin/mpv",
-        }
-    }
-
-    for _, path := range candidates {
-        if _, err := os.Stat(path); err == nil {
-            return path, nil
-        }
-    }
-
-    // Fallback: check PATH
-    path, err := exec.LookPath("mpv")
-    if err != nil {
-        return "", fmt.Errorf("MPV not found. Install MPV and add it to your PATH")
-    }
-    return path, nil
 }

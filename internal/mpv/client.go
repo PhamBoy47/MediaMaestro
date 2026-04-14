@@ -6,10 +6,12 @@ import (
     "fmt"
     "io"
     "net"
-    "os"
     "sync"
     "sync/atomic"
     "time"
+    "runtime"
+
+    "github.com/Microsoft/go-winio"
 )
 
 // IPCClient communicates with MPV via its JSON IPC protocol.
@@ -73,42 +75,43 @@ func NewIPCClient(socketPath string) *IPCClient {
 
 // Connect establishes a connection to MPV's IPC socket
 func (c *IPCClient) Connect() error {
-    // Wait for socket file to exist (MPV creates it on startup)
-    maxRetries := 50
-    for i := 0; i < maxRetries; i++ {
-        if _, err := os.Stat(c.socketPath); err == nil {
-            break
+    tries := 1
+    for {
+        var conn net.Conn
+        var err error
+        if runtime.GOOS == "windows" {
+            conn, err = winio.DialPipe(c.socketPath, nil)
+        } else {
+            conn, err = net.DialTimeout("unix", c.socketPath, 500*time.Millisecond)
         }
-        if i == maxRetries-1 {
-            return fmt.Errorf("MPV IPC socket not found at %s after waiting", c.socketPath)
+
+        if err == nil {
+            c.conn = conn
+            c.reader = bufio.NewReader(conn)
+            c.connected.Store(true)
+
+            // Start reading responses/events
+            go c.readLoop()
+
+            // Re-register property observers on reconnect
+            c.propObsMu.RLock()
+            for id, obs := range c.propertyObs {
+                c.observePropertyDirect(obs.name, id)
+            }
+            c.propObsMu.RUnlock()
+
+            if c.onConnect != nil {
+                c.onConnect()
+            }
+            return nil
         }
+
+        if tries >= 50 {
+            return fmt.Errorf("failed to connect to MPV IPC socket at %s: %w", c.socketPath, err)
+        }
+        tries++
         time.Sleep(100 * time.Millisecond)
     }
-
-    conn, err := net.DialTimeout("unix", c.socketPath, 5*time.Second)
-    if err != nil {
-        return fmt.Errorf("failed to connect to MPV IPC: %w", err)
-    }
-
-    c.conn = conn
-    c.reader = bufio.NewReader(conn)
-    c.connected.Store(true)
-
-    // Start reading responses/events
-    go c.readLoop()
-
-    // Re-register property observers on reconnect
-    c.propObsMu.RLock()
-    for id, obs := range c.propertyObs {
-        c.observePropertyDirect(obs.name, id)
-    }
-    c.propObsMu.RUnlock()
-
-    if c.onConnect != nil {
-        c.onConnect()
-    }
-
-    return nil
 }
 
 // readLoop reads JSON messages from the IPC socket

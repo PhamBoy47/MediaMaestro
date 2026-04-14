@@ -1,12 +1,10 @@
 package subtitles
 
 import (
-    "bytes"
-    "crypto/md5"
+    "encoding/binary"
     "encoding/json"
     "fmt"
     "io"
-    "mime/multipart"
     "net/http"
     "os"
     "path/filepath"
@@ -279,7 +277,4 @@ func extractSubtitle(data []byte, baseName string, saveDir string) (string, erro
     os.WriteFile(savePath, data, 0644)
     return savePath, nil
 }
-
-import "encoding/binary"
-
 var byteOrder = binary.LittleEndian
