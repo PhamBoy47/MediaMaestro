@@ -25,6 +25,9 @@ export namespace database {
 	    file_path: string;
 	    cover_path: string;
 	    metadata: string;
+	    file_size: number;
+	    duration: number;
+	    artist: string;
 	    play_count: number;
 	    // Go type: time
 	    last_played?: any;
@@ -45,9 +48,53 @@ export namespace database {
 	        this.file_path = source["file_path"];
 	        this.cover_path = source["cover_path"];
 	        this.metadata = source["metadata"];
+	        this.file_size = source["file_size"];
+	        this.duration = source["duration"];
+	        this.artist = source["artist"];
 	        this.play_count = source["play_count"];
 	        this.last_played = this.convertValues(source["last_played"], null);
 	        this.created_at = this.convertValues(source["created_at"], null);
+	        this.updated_at = this.convertValues(source["updated_at"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class WatchProgress {
+	    id: string;
+	    media_path: string;
+	    position: number;
+	    duration: number;
+	    completed: boolean;
+	    // Go type: time
+	    updated_at: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new WatchProgress(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.media_path = source["media_path"];
+	        this.position = source["position"];
+	        this.duration = source["duration"];
+	        this.completed = source["completed"];
 	        this.updated_at = this.convertValues(source["updated_at"], null);
 	    }
 	

@@ -35,6 +35,20 @@ interface TrackInfo {
   year?: number;
 }
 
+interface MediaInfo {
+  filename?: string;
+  width?: number;
+  height?: number;
+  videoCodec?: string;
+  audioCodec?: string;
+  audioChannels?: number;
+  sampleRate?: number;
+  fileSize?: number;
+  pixelFormat?: string;
+  videoBitrate?: number;
+  audioBitrate?: number;
+}
+
 interface PlayerState {
   // Mode
   mode: PlaybackMode;
@@ -55,6 +69,8 @@ interface PlayerState {
   activeSubtitleTrack: number | null;
   activeAudioTrack: number | null;
   isBuffering: boolean;
+  mediaInfo: MediaInfo;
+  showStats: boolean;
   
   // Music state
   currentTrack: TrackInfo | null;
@@ -78,6 +94,8 @@ interface PlayerState {
   setPlaybackSpeed: (speed: number) => Promise<void>;
   toggleFullscreen: () => Promise<void>;
   refreshTrackList: () => Promise<void>;
+  refreshMediaInfo: () => Promise<void>;
+  toggleStats: () => void;
 
   // Actions — Music
   playTrack: (track: TrackInfo) => Promise<void>;
@@ -89,6 +107,24 @@ interface PlayerState {
 }
 
 let mpvListenerInitialized = false;
+let progressSaveInterval: ReturnType<typeof setInterval> | null = null;
+
+function startProgressSaver() {
+  if (progressSaveInterval) return;
+  progressSaveInterval = setInterval(() => {
+    const state = usePlayerStore.getState();
+    if (state.isPlaying && state.videoSource && state.currentTime > 0 && state.duration > 0) {
+      App.SaveWatchProgress(state.videoSource, state.currentTime, state.duration).catch(() => {});
+    }
+  }, 10000); // Save every 10 seconds
+}
+
+function stopProgressSaver() {
+  if (progressSaveInterval) {
+    clearInterval(progressSaveInterval);
+    progressSaveInterval = null;
+  }
+}
 
 function initMpvListeners() {
   if (mpvListenerInitialized) return;
@@ -112,6 +148,11 @@ function initMpvListeners() {
 
   EventsOn('mpv:ended', () => {
     const state = usePlayerStore.getState();
+    // Save final progress
+    if (state.videoSource && state.duration > 0) {
+      App.SaveWatchProgress(state.videoSource, state.currentTime, state.duration).catch(() => {});
+    }
+    stopProgressSaver();
     if (state.mode === 'music') {
       state.nextTrack();
     } else {
@@ -121,6 +162,8 @@ function initMpvListeners() {
 
   EventsOn('mpv:file-loaded', () => {
     usePlayerStore.getState().refreshTrackList();
+    usePlayerStore.getState().refreshMediaInfo();
+    startProgressSaver();
   });
 
   EventsOn('mpv:track-list', (data: any) => {
@@ -131,12 +174,12 @@ function initMpvListeners() {
     usePlayerStore.setState({ isBuffering: data });
   });
 
-  EventsOn('mpv:buffer', (data: any) => {
+  EventsOn('mpv:buffer', (_data: any) => {
     // Buffer state for torrent streaming
   });
 
   // Torrent events
-  EventsOn('torrent:added', (data: string) => {
+  EventsOn('torrent:added', (_data: string) => {
     // Update torrent list
   });
 }
@@ -196,6 +239,8 @@ export const usePlayerStore = create<PlayerState>()((set, get) => {
     activeSubtitleTrack: null,
     activeAudioTrack: null,
     isBuffering: false,
+    mediaInfo: {},
+    showStats: false,
     currentTrack: null,
     queue: [],
     queueIndex: 0,
@@ -205,18 +250,32 @@ export const usePlayerStore = create<PlayerState>()((set, get) => {
     // ── Video Actions ──
 
     playFile: async (path) => {
-      await App.MpvPlayFile(path);
-      set({ mode: 'video', isPlaying: true, isPaused: false, videoSource: path });
+      // Check for saved progress to resume
+      try {
+        const progress = await App.GetWatchProgress(path);
+        await App.MpvPlayFile(path);
+        set({ mode: 'video', isPlaying: true, isPaused: false, videoSource: path, mediaInfo: {} });
+        // Resume from saved position if not completed and > 5s in
+        if (progress && !progress.completed && progress.position > 5) {
+          // Small delay to let MPV load the file
+          setTimeout(async () => {
+            try { await App.MpvSeek(progress.position); } catch {}
+          }, 500);
+        }
+      } catch {
+        await App.MpvPlayFile(path);
+        set({ mode: 'video', isPlaying: true, isPaused: false, videoSource: path, mediaInfo: {} });
+      }
     },
 
     playStream: async (url, title) => {
       await App.MpvPlayURL(url, title);
-      set({ mode: 'video', isPlaying: true, isPaused: false, videoSource: url, videoTitle: title });
+      set({ mode: 'video', isPlaying: true, isPaused: false, videoSource: url, videoTitle: title, mediaInfo: {} });
     },
 
     playWithSubs: async (path, subPath) => {
       await App.MpvPlayWithSubs(path, subPath);
-      set({ mode: 'video', isPlaying: true, isPaused: false, videoSource: path });
+      set({ mode: 'video', isPlaying: true, isPaused: false, videoSource: path, mediaInfo: {} });
     },
 
     togglePause: async () => {
@@ -237,11 +296,18 @@ export const usePlayerStore = create<PlayerState>()((set, get) => {
     },
 
     stop: async () => {
+      // Save progress before stopping
+      const { videoSource, currentTime, duration } = get();
+      if (videoSource && currentTime > 0 && duration > 0) {
+        App.SaveWatchProgress(videoSource, currentTime, duration).catch(() => {});
+      }
+      stopProgressSaver();
       await App.MpvStop();
       set({ 
         mode: 'idle', isPlaying: false, isPaused: false, 
         currentTime: 0, duration: 0, videoSource: null, 
-        videoTitle: null, currentTrack: null 
+        videoTitle: null, currentTrack: null, mediaInfo: {},
+        showStats: false,
       });
     },
 
@@ -254,7 +320,6 @@ export const usePlayerStore = create<PlayerState>()((set, get) => {
       await App.MpvSetAudioTrack(id);
       set({ activeAudioTrack: id });
     },
-
 
     addSubtitle: async (path) => {
       await App.MpvAddSubtitle(path);
@@ -276,6 +341,21 @@ export const usePlayerStore = create<PlayerState>()((set, get) => {
       } catch (e) {
         console.error('Failed to refresh track list:', e);
       }
+    },
+
+    refreshMediaInfo: async () => {
+      try {
+        const info = await App.MpvGetMediaInfo();
+        if (info) {
+          set({ mediaInfo: info as MediaInfo });
+        }
+      } catch (e) {
+        console.warn('Failed to fetch media info:', e);
+      }
+    },
+
+    toggleStats: () => {
+      set((s) => ({ showStats: !s.showStats }));
     },
 
     // ── Music Actions ──

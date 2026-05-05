@@ -9,12 +9,14 @@ interface MediaCardProps {
   cover?: string;
   duration?: string;
   size?: string;
+  mediaType?: string;
+  progress?: number;
   onClick?: () => void;
   className?: string;
 }
 
 export const MediaCard: React.FC<MediaCardProps> = ({
-  title, subtitle, cover, duration, size, onClick, className
+  title, subtitle, cover, duration, size, mediaType, progress, onClick, className
 }) => {
   return (
     <motion.div
@@ -48,6 +50,23 @@ export const MediaCard: React.FC<MediaCardProps> = ({
             <div className="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[10px] font-bold text-white/90 border border-white/10">
                 {duration}
             </div>
+        )}
+
+        {/* Badge: Media Type */}
+        {mediaType && (
+            <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[10px] font-bold text-white/90 border border-white/10 uppercase">
+                {mediaType}
+            </div>
+        )}
+
+        {/* Progress Bar */}
+        {progress !== undefined && progress > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
+            <div 
+              className="h-full bg-accent" 
+              style={{ width: `${Math.min(100, Math.max(0, progress * 100))}%` }} 
+            />
+          </div>
         )}
       </div>
 

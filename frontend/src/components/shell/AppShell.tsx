@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useUIStore } from '../../stores/ui-store';
 import { usePlayerStore } from '../../stores/player-store';
 import { Titlebar } from './Titlebar';
@@ -17,14 +18,21 @@ export const AppShell: React.FC = () => {
   const playerMode = usePlayerStore((s) => s.mode);
   const currentTrack = usePlayerStore((s) => s.currentTrack);
 
+  // Auto-return to library if player is idle in video mode (e.g. after Stop or on Boot)
+  React.useEffect(() => {
+    if (viewMode === 'video' && playerMode === 'idle') {
+      useUIStore.getState().setViewMode('library');
+    }
+  }, [viewMode, playerMode]);
+
   // Toggle transparency class for video parenting
   React.useEffect(() => {
-    if (viewMode === 'video') {
+    if (viewMode === 'video' && playerMode !== 'idle') {
       document.documentElement.classList.add('layers-transparent');
     } else {
       document.documentElement.classList.remove('layers-transparent');
     }
-  }, [viewMode]);
+  }, [viewMode, playerMode]);
 
   // Show mini-player when music is playing but user is not in the full player view
   const showMiniPlayer = playerMode === 'music' && currentTrack !== null && viewMode !== 'video' && viewMode !== 'music';

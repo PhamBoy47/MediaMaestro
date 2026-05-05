@@ -49,7 +49,8 @@ func (s *Scanner) ScanDirectory(dirPath string) ([]database.MediaItem, error) {
 				Title:     strings.TrimSuffix(info.Name(), filepath.Ext(info.Name())),
 				MediaType: mediaType,
 				FilePath:  path,
-				Metadata:  "{}",
+				FileSize:  info.Size(),
+				Metadata:  fmt.Sprintf(`{"file_size":%d}`, info.Size()),
 			}
 			
 			// Save to DB immediately

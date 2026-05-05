@@ -5,6 +5,8 @@ import {music} from '../models';
 import {subtitles} from '../models';
 import {torrent} from '../models';
 
+export function AddVideoFile():Promise<database.MediaItem>;
+
 export function DownloadSubtitle(arg1:string,arg2:string):Promise<string>;
 
 export function GetConfigDir():Promise<string>;
@@ -15,9 +17,15 @@ export function GetLibraryStats():Promise<database.GlobalStats>;
 
 export function GetPlatform():Promise<string>;
 
+export function GetRecentlyPlayed(arg1:number):Promise<Array<database.MediaItem>>;
+
+export function GetWatchProgress(arg1:string):Promise<database.WatchProgress>;
+
 export function MpvAddSubtitle(arg1:string):Promise<void>;
 
 export function MpvGetDuration():Promise<number>;
+
+export function MpvGetMediaInfo():Promise<Record<string, any>>;
 
 export function MpvGetTimePosition():Promise<number>;
 
@@ -66,6 +74,8 @@ export function MusicTogglePause():Promise<void>;
 export function OpenFilePicker():Promise<string>;
 
 export function OpenFolderPicker():Promise<string>;
+
+export function SaveWatchProgress(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function ScanFolder():Promise<Array<database.MediaItem>>;
 

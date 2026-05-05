@@ -3,7 +3,7 @@ import { usePlayerStore } from '@/stores/player-store';
 import { 
   Play, Pause, SkipBack, SkipForward, 
   Volume2, VolumeX, Maximize, Minimize,
-  Settings, Subtitles, ListMusic
+  Settings, Subtitles, ListMusic, BarChart3
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -127,9 +127,14 @@ export const ControlBar: React.FC<{ onOpenTracks: () => void }> = ({ onOpenTrack
       {/* Right Section: Features */}
       <div className="flex items-center gap-1">
         {mode === 'video' && (
-          <ControlButton onClick={onOpenTracks}>
-            <Subtitles size={20} />
-          </ControlButton>
+          <>
+            <ControlButton onClick={usePlayerStore.getState().toggleStats}>
+              <BarChart3 size={20} />
+            </ControlButton>
+            <ControlButton onClick={onOpenTracks}>
+              <Subtitles size={20} />
+            </ControlButton>
+          </>
         )}
         <ControlButton onClick={onOpenTracks}>
           <Settings size={20} />

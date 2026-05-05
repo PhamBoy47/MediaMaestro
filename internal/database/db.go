@@ -73,6 +73,17 @@ func (d *DB) migrate() error {
             return err
         }
     }
+
+    // Schema evolution — add columns if they don't exist (safe for existing DBs)
+    alters := []string{
+        "ALTER TABLE media_items ADD COLUMN file_size INTEGER DEFAULT 0",
+        "ALTER TABLE media_items ADD COLUMN duration REAL DEFAULT 0",
+        "ALTER TABLE media_items ADD COLUMN artist TEXT DEFAULT ''",
+    }
+    for _, a := range alters {
+        d.db.Exec(a) // Silently ignore "duplicate column" errors
+    }
+
     return nil
 }
 

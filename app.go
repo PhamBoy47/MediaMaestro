@@ -2,11 +2,14 @@ package main
 
 import (
     "context"
+    "fmt"
     "log"
     "os"
     "path/filepath"
     "runtime"
+    "strings"
 
+    "github.com/google/uuid"
     "github.com/PhamBoy47/media-maestro/internal/database"
     "github.com/PhamBoy47/media-maestro/internal/mpv"
     "github.com/PhamBoy47/media-maestro/internal/music"
@@ -118,7 +121,11 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 // ══════════════════════════════════════════════════════════
 
 func (a *App) MpvPlayFile(path string) error {
-    return a.mpvMgr.PlayFile(path)
+    err := a.mpvMgr.PlayFile(path)
+    if err == nil && a.db != nil {
+        a.db.IncrementPlayCount(path)
+    }
+    return err
 }
 
 func (a *App) MpvPlayURL(url string, title string) error {
@@ -204,6 +211,111 @@ func (a *App) ScanFolder() ([]database.MediaItem, error) {
 
 func (a *App) GetLibraryStats() (database.GlobalStats, error) {
 	return a.db.GetStats()
+}
+
+func (a *App) GetRecentlyPlayed(limit int) ([]database.MediaItem, error) {
+	if limit <= 0 {
+		limit = 8
+	}
+	return a.db.GetRecentlyPlayed(limit)
+}
+
+func (a *App) AddVideoFile() (*database.MediaItem, error) {
+	path, err := wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title: "Select video file",
+		Filters: []wailsRuntime.FileFilter{
+			{DisplayName: "Video files (*.mkv;*.mp4;*.avi)", Pattern: "*.mkv;*.mp4;*.avi"},
+		},
+	})
+	if err != nil || path == "" {
+		return nil, err
+	}
+
+	// Get file info for size
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+
+	title := strings.TrimSuffix(info.Name(), filepath.Ext(info.Name()))
+	item := database.MediaItem{
+		ID:        uuid.New().String(),
+		Title:     title,
+		MediaType: "video",
+		FilePath:  path,
+		FileSize:  info.Size(),
+		Metadata:  fmt.Sprintf(`{"file_size":%d}`, info.Size()),
+	}
+
+	if err := a.db.SaveMediaItem(item); err != nil {
+		log.Printf("Failed to save video file to library: %v", err)
+	}
+
+	return &item, nil
+}
+
+func (a *App) SaveWatchProgress(mediaPath string, position float64, duration float64) error {
+	if a.db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	return a.db.SaveWatchProgress(mediaPath, position, duration)
+}
+
+func (a *App) GetWatchProgress(mediaPath string) (*database.WatchProgress, error) {
+	if a.db == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+	return a.db.GetWatchProgress(mediaPath)
+}
+
+// MpvGetMediaInfo returns detailed media info from the currently playing file
+func (a *App) MpvGetMediaInfo() (map[string]interface{}, error) {
+	info := make(map[string]interface{})
+
+	if a.mpvMgr == nil {
+		return info, fmt.Errorf("MPV not initialized")
+	}
+
+	// Filename
+	if v, err := a.mpvMgr.GetProperty("filename"); err == nil {
+		info["filename"] = v
+	}
+	// Video resolution
+	if v, err := a.mpvMgr.GetProperty("video-params/w"); err == nil {
+		info["width"] = v
+	}
+	if v, err := a.mpvMgr.GetProperty("video-params/h"); err == nil {
+		info["height"] = v
+	}
+	// Codecs
+	if v, err := a.mpvMgr.GetProperty("video-codec"); err == nil {
+		info["videoCodec"] = v
+	}
+	if v, err := a.mpvMgr.GetProperty("audio-codec-name"); err == nil {
+		info["audioCodec"] = v
+	}
+	// Audio params
+	if v, err := a.mpvMgr.GetProperty("audio-params/channel-count"); err == nil {
+		info["audioChannels"] = v
+	}
+	if v, err := a.mpvMgr.GetProperty("audio-params/samplerate"); err == nil {
+		info["sampleRate"] = v
+	}
+	// File size / format
+	if v, err := a.mpvMgr.GetProperty("file-size"); err == nil {
+		info["fileSize"] = v
+	}
+	if v, err := a.mpvMgr.GetProperty("video-params/pixelformat"); err == nil {
+		info["pixelFormat"] = v
+	}
+	if v, err := a.mpvMgr.GetFloatProperty("video-bitrate"); err == nil {
+		info["videoBitrate"] = v
+	}
+	if v, err := a.mpvMgr.GetFloatProperty("audio-bitrate"); err == nil {
+		info["audioBitrate"] = v
+	}
+
+	return info, nil
 }
 
 // ══════════════════════════════════════════════════════════

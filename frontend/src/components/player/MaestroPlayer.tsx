@@ -10,12 +10,14 @@ import { Loader2 } from 'lucide-react';
 
 import { MusicNowPlaying } from './MusicNowPlaying';
 import { TrackSidebar } from './TrackSidebar';
+import { VideoStats } from './VideoStats';
 
 export const PremiumPlayer: React.FC = () => {
   const [cursorVisible, setCursorVisible] = useState(true);
   const [isTrackSidebarOpen, setIsTrackSidebarOpen] = useState(false);
   
   const mode = usePlayerStore((s) => s.mode);
+  const showStats = usePlayerStore((s) => s.showStats);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const isBuffering = usePlayerStore((s) => s.isBuffering);
   const togglePause = usePlayerStore((s) => s.togglePause);
@@ -103,6 +105,11 @@ export const PremiumPlayer: React.FC = () => {
             <div className="relative z-10 pointer-events-none">
               <SubtitleDisplay />
             </div>
+            
+            {/* Video Stats Overlay */}
+            <AnimatePresence>
+              {showStats && <VideoStats />}
+            </AnimatePresence>
             
             {/* Torrent Stream Progress */}
             <div className="absolute top-20 right-6 z-30 pointer-events-none">

@@ -14,30 +14,70 @@ import { cn } from '@/lib/utils';
 
 export const LibraryView: React.FC = () => {
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'video' | 'audio'>('all');
   const [items, setItems] = useState<any[]>([]);
+  const [recentItems, setRecentItems] = useState<any[]>([]);
+  const [watchProgress, setWatchProgress] = useState<Record<string, any>>({});
   const [statsData, setStatsData] = useState<any>(null);
   const [isScanning, setIsScanning] = useState(false);
   
   const layout = useUIStore((s) => s.libraryLayout);
+  const libraryFilter = useUIStore((s) => s.libraryFilter);
   const setLayout = useUIStore((s) => s.setLibraryLayout);
   const setViewMode = useUIStore((s) => s.setViewMode);
   const playFile = usePlayerStore((s) => s.playFile);
 
   const fetchLibrary = async () => {
+    // Guard: Wails runtime injects window.go asynchronously in dev mode.
+    if (!(window as any).go) return;
     try {
-      const results = await App.GetLibraryItems(activeTab, search);
+      const results = await App.GetLibraryItems(libraryFilter, search);
       setItems(results || []);
+      
+      if (!search && libraryFilter === 'all') {
+        const recent = await App.GetRecentlyPlayed(8);
+        setRecentItems(recent || []);
+      } else {
+        setRecentItems([]);
+      }
+
       const stats = await App.GetLibraryStats();
       setStatsData(stats);
+
+      // Fetch progress for all video items to show resume bar
+      // We could do a batch fetch, but for now we'll just fetch for recents to save overhead
     } catch (e) {
-      console.error("Failed to fetch library:", e);
+      console.warn("Library fetch deferred (bindings not ready):", e);
     }
   };
 
   useEffect(() => {
+    const fetchProgress = async () => {
+      if (recentItems.length === 0) return;
+      const progressMap: Record<string, any> = {};
+      for (const item of recentItems) {
+        if (item.media_type === 'video') {
+           try {
+             const wp = await App.GetWatchProgress(item.file_path);
+             if (wp) progressMap[item.file_path] = wp;
+           } catch (e) {}
+        }
+      }
+      setWatchProgress(progressMap);
+    };
+    fetchProgress();
+  }, [recentItems]);
+
+  useEffect(() => {
+    // Immediately attempt, then poll until window.go is injected
     fetchLibrary();
-  }, [activeTab, search]);
+    const interval = setInterval(() => {
+      if ((window as any).go) {
+        fetchLibrary();
+        clearInterval(interval);
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [libraryFilter, search]);
 
   const handleScan = async () => {
     setIsScanning(true);
@@ -51,17 +91,38 @@ export const LibraryView: React.FC = () => {
     }
   };
 
+  const handleOpenVideo = async () => {
+    try {
+      const item = await App.AddVideoFile();
+      if (item) {
+        setViewMode('video');
+        await playFile(item.file_path);
+        fetchLibrary(); // refresh library in background
+      }
+    } catch (e) {
+      console.error("Failed to open video:", e);
+    }
+  };
+
+  const formatDuration = (secs?: number) => {
+    if (!secs) return undefined;
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const formatSize = (bytes?: number) => {
+    if (!bytes) return undefined;
+    if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(1)} GB`;
+    if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+    return `${Math.round(bytes / 1024)} KB`;
+  };
+
   const stats = [
     { label: 'Total Files', value: statsData?.total_files || '0', icon: FileText, color: 'text-blue-400' },
     { label: 'Videos', value: statsData?.videos || '0', icon: Video, color: 'text-purple-400' },
     { label: 'Audio', value: statsData?.audio || '0', icon: Music, color: 'text-pink-400' },
     { label: 'Total Size', value: statsData?.total_size || '0 GB', icon: HardDrive, color: 'text-emerald-400' },
-  ];
-
-  const tabs = [
-    { id: 'all', label: 'All Media', icon: LayoutGrid },
-    { id: 'video', label: 'Videos', icon: Video },
-    { id: 'audio', label: 'Music', icon: Music },
   ];
 
   return (
@@ -81,6 +142,13 @@ export const LibraryView: React.FC = () => {
             >
               <RotateCw size={18} className={cn(isScanning && "animate-spin")} />
               Sync Library
+            </button>
+            <button 
+              onClick={handleOpenVideo}
+              className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-sm font-medium text-white/70 transition-all active:scale-95"
+            >
+              <Video size={18} />
+              Open File
             </button>
             <button 
               onClick={handleScan}
@@ -112,22 +180,10 @@ export const LibraryView: React.FC = () => {
       {/* Toolbar */}
       <div className="sticky top-0 z-10 px-8 py-4 bg-surface-0/80 backdrop-blur-xl border-b border-white/5 flex items-center justify-between">
         <div className="flex items-center gap-6">
-          <div className="flex items-center gap-1 p-1 bg-white/5 rounded-xl border border-white/5">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all",
-                  activeTab === tab.id 
-                    ? "bg-white/10 text-white shadow-sm" 
-                    : "text-white/40 hover:text-white/70"
-                )}
-              >
-                <tab.icon size={16} />
-                {tab.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-black tracking-tight text-white/80">
+               {libraryFilter === 'video' ? 'Videos' : libraryFilter === 'audio' ? 'Audio' : 'All Media'}
+            </h1>
           </div>
 
           <div className="relative">
@@ -174,9 +230,51 @@ export const LibraryView: React.FC = () => {
       </div>
 
       {/* Main Grid Area */}
-      <div className="flex-1 overflow-y-auto p-8 pt-6">
+      <div className="flex-1 overflow-y-auto p-8 pt-6 hide-scrollbar">
+        {recentItems.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-lg font-bold text-white mb-4">Recently Played</h2>
+            <div className="flex gap-4 overflow-x-auto pb-4 hide-scrollbar snap-x">
+              {recentItems.map(item => {
+                const wp = watchProgress[item.file_path];
+                const progress = wp && wp.duration > 0 ? wp.position / wp.duration : 0;
+                return (
+                  <div key={`recent-${item.id}`} className="w-64 flex-shrink-0 snap-start">
+                    <MediaCard
+                      title={item.title}
+                      subtitle={item.media_type === 'video' ? 'Video' : item.artist || 'Audio'}
+                      cover={item.cover_path}
+                      mediaType={item.media_type}
+                      duration={formatDuration(item.duration)}
+                      size={formatSize(item.file_size)}
+                      progress={progress}
+                      onClick={async () => {
+                        if (item.media_type === 'video') {
+                          setViewMode('video');
+                          await playFile(item.file_path);
+                        } else {
+                          setViewMode('video');
+                          usePlayerStore.getState().playTrack({
+                            id: item.id,
+                            title: item.title,
+                            artist: item.artist || 'Unknown Artist',
+                            album: item.album || 'Unknown Album',
+                            filePath: item.file_path,
+                            coverPath: item.cover_path,
+                            durationSecs: item.duration || 0,
+                          });
+                        }
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {items.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center opacity-50">
+          <div className="h-full flex flex-col items-center justify-center text-center opacity-50 py-20">
              <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-4">
                 <Video className="w-8 h-8 text-white/20" />
              </div>
@@ -184,42 +282,44 @@ export const LibraryView: React.FC = () => {
              <p className="text-sm text-white/40 mt-1">Add a folder or drag files here to begin</p>
           </div>
         ) : (
-          <div className={cn(
-            "grid gap-6",
-            layout === 'grid' 
-              ? "grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6" 
-              : "grid-cols-1"
-          )}>
-            {items.map((item) => (
-              <MediaCard
-                key={item.id}
-                title={item.title}
-                subtitle={item.media_type === 'video' ? 'Video' : 'Audio'}
-                cover={item.cover_path}
-                onClick={async () => {
-                    if (item.media_type === 'video') {
-                      setViewMode('video');
-                      await playFile(item.file_path);
-                    } else {
-                      // Map library item to TrackInfo and play
-                      const track = {
-                        id: item.id,
-                        title: item.title,
-                        artist: item.artist || 'Unknown Artist',
-                        album: item.album || 'Unknown Album',
-                        filePath: item.file_path,
-                        coverPath: item.cover_path,
-                        durationSecs: item.duration || 0,
-                      };
-                      
-                      // Using playTrack from usePlayerStore
-                      // Note: we set viewMode to 'video' to show the main player
-                      setViewMode('video');
-                      usePlayerStore.getState().playTrack(track);
-                    }
-                }}
-              />
-            ))}
+          <div>
+            <h2 className="text-lg font-bold text-white mb-4">All Media</h2>
+            <div className={cn(
+              "grid gap-6",
+              layout === 'grid' 
+                ? "grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6" 
+                : "grid-cols-1"
+            )}>
+              {items.map((item) => (
+                <MediaCard
+                  key={item.id}
+                  title={item.title}
+                  subtitle={item.media_type === 'video' ? 'Video' : item.artist || 'Audio'}
+                  cover={item.cover_path}
+                  mediaType={item.media_type}
+                  duration={formatDuration(item.duration)}
+                  size={formatSize(item.file_size)}
+                  onClick={async () => {
+                      if (item.media_type === 'video') {
+                        setViewMode('video');
+                        await playFile(item.file_path);
+                      } else {
+                        const track = {
+                          id: item.id,
+                          title: item.title,
+                          artist: item.artist || 'Unknown Artist',
+                          album: item.album || 'Unknown Album',
+                          filePath: item.file_path,
+                          coverPath: item.cover_path,
+                          durationSecs: item.duration || 0,
+                        };
+                        setViewMode('video');
+                        usePlayerStore.getState().playTrack(track);
+                      }
+                  }}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>

@@ -1,22 +1,38 @@
 import React from 'react';
 import { useUIStore } from '@/stores/ui-store';
+import { usePlayerStore } from '@/stores/player-store';
+import * as App from '../../../wailsjs/go/main/App';
 import { 
   Home, Video, Music, Clock, 
   Star, Folder, Download, Search,
-  Settings, ChevronRight, Hash
+  Settings, ChevronRight, Hash, Headphones
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export const MediaSidebar: React.FC = () => {
   const viewMode = useUIStore((s) => s.viewMode);
   const setViewMode = useUIStore((s) => s.setViewMode);
+  const libraryFilter = useUIStore((s) => s.libraryFilter);
+  const setLibraryFilter = useUIStore((s) => s.setLibraryFilter);
 
   const menuItems = [
-    { id: 'library', label: 'Home', icon: Home },
-    { id: 'videos', label: 'All Videos', icon: Video },
-    { id: 'music_lib', label: 'All Music', icon: Music },
-    { id: 'recent', label: 'Recent', icon: Clock },
+    { id: 'library-all', label: 'Home', icon: Home },
+    { id: 'library-video', label: 'All Videos', icon: Video },
+    { id: 'music', label: 'All Music', icon: Music },
+    { id: 'library-audio', label: 'All Audio', icon: Headphones },
   ];
+
+  const handleOpenVideo = async () => {
+    try {
+      const item = await App.AddVideoFile();
+      if (item) {
+        setViewMode('video');
+        await usePlayerStore.getState().playFile(item.file_path);
+      }
+    } catch (e) {
+      console.error("Failed to open video:", e);
+    }
+  };
 
   const collections = [
     { label: 'Favorites', icon: Star, color: 'text-amber-400' },
@@ -30,21 +46,36 @@ export const MediaSidebar: React.FC = () => {
       <div className="mb-8">
         <h3 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-4 px-2">Quick Access</h3>
         <div className="space-y-1">
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setViewMode(item.id === 'music_lib' ? 'music' : 'library')}
-              className={cn(
-                "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group",
-                (viewMode === item.id || (viewMode === 'library' && item.id === 'library'))
-                  ? "bg-accent/10 text-accent" 
-                  : "text-white/50 hover:bg-white/5 hover:text-white/80"
-              )}
-            >
-              <item.icon size={18} className="transition-transform group-hover:scale-110" />
-              <span className="text-sm font-medium">{item.label}</span>
-            </button>
-          ))}
+          {menuItems.map((item) => {
+            const isLibraryItem = item.id.startsWith('library-');
+            const targetFilter = isLibraryItem ? item.id.split('-')[1] : null;
+            const isActive = isLibraryItem 
+                ? (viewMode === 'library' && libraryFilter === targetFilter)
+                : viewMode === item.id;
+
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                    if (isLibraryItem) {
+                        setViewMode('library');
+                        setLibraryFilter(targetFilter as any);
+                    } else {
+                        setViewMode(item.id as any);
+                    }
+                }}
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group",
+                  isActive
+                    ? "bg-accent/10 text-accent" 
+                    : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                )}
+              >
+                <item.icon size={18} className="transition-transform group-hover:scale-110" />
+                <span className="text-sm font-medium">{item.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -88,6 +119,17 @@ export const MediaSidebar: React.FC = () => {
         >
           <Settings size={18} />
           <span className="text-sm font-medium">Settings</span>
+        </button>
+      </div>
+      
+      {/* Quick Open Action */}
+      <div className="mt-4 px-2">
+        <button 
+          onClick={handleOpenVideo}
+          className="w-full flex items-center justify-center gap-2 py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-xl border border-white/10 transition-all active:scale-95 text-sm font-medium"
+        >
+          <Video size={16} />
+          Quick Open
         </button>
       </div>
     </div>

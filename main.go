@@ -41,9 +41,8 @@ func main() {
         },
         Windows: &windows.Options{
             WebviewIsTransparent: true,
-            WindowIsTranslucent:  true,
+            WindowIsTranslucent:  false,
             DisableWindowIcon:    false,
-            // BackdropType: windows.Mica, // Optional: for Windows 11 Mica effect
         },
         Debug: options.Debug{
             OpenInspectorOnStartup: false,
